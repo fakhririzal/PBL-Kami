@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-Time Chat Application</title>
+    <link
+      rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+    />
+    <style>
+      /* Full screen background */
+      .full {
+        background-color: #1a1a1a;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+
+      .h3 {
+        margin-bottom: 20px;
+      }
+
+      #room-form {
+        background-color: gray;
+      }
+
+      #name {
+        margin-bottom: 20px;
+      }
+
+      #room_code {
+        margin-bottom: 20px;
+      }
+
+      #join-room {
+        margin-bottom: 20px;
+      }
+
+      /* Chat container */
+      .container {
+        width: 500px;
+        max-width: 90%;
+        text-align: center;
+      }
+
+      /* Message container with scroll */
+      #messages {
+        list-style-type: none;
+        padding: 10px;
+        max-height: 300px;
+        overflow-y: auto;
+        background-color: #333;
+        border-radius: 8px;
+        margin-bottom: 15px;
+      }
+
+      .message {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 75%;
+        word-wrap: break-word;
+        font-size: 14px;
+        position: relative;
+      }
+
+      /* Sent message (user's message) */
+      .message.sent {
+        background-color: #3b82f6;
+        color: #fff;
+        text-align: left;
+        margin-left: auto;
+      }
+
+      /* Received message (other user's message) */
+      .message.received {
+        background-color: #22c55e;
+        color: #fff;
+        text-align: left;
+        margin-right: auto;
+      }
+
+      /* Timestamp styling */
+      .timestamp {
+        font-size: 11px;
+        opacity: 0.7;
+        display: block;
+        margin-top: 5px;
+        text-align: right;
+      }
+
+      /* Input and button styling */
+      #message_input {
+        width: calc(100% - 90px);
+        margin-right: 10px;
+        padding: 10px;
+        border-radius: 20px;
+        border: none;
+        background-color: #333;
+        color: #fff;
+      }
+
+      #send {
+        width: 80px;
+        border: none;
+        border-radius: 20px;
+        background-color: #3b82f6;
+        color: #fff;
+        font-weight: bold;
+      }
+
+      /* Chat room visibility */
+      #chat-room {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="full">
+      <div class="container mt-5">
+        <div class="col-md-8 offset-md-2">
+          <!-- Room Form -->
+          <form id="room-form">
+            <h3 class="h3">Enter Chat Room</h3>
+            <div>
+              <label></label>
+              <input type="text" placeholder="Pick a Name!" id="name" required />
+            </div>
+            <div class="join">
+              <label></label>
+              <input type="text" placeholder="Room Code" id="room_code" required />
+              <button type="button" id="join-room" class="btn btn-primary">Join Room</button>
+            </div>
+            <button type="button" id="create-room" class="btn btn-success">Create Room</button>
+            <ul id="error-message" style="color: red;"></ul>
+          </form>
+
+          <!-- Chat Room Layout -->
+          <div id="chat-room">
+            <h2 id="room-code-display"></h2>
+            <ul id="messages" class="p-3"></ul>
+            <form id="form">
+              <div class="input-group mb-3">
+                <input
+                  type="text"
+                  id="message_input"
+                  class="form-control"
+                  placeholder="Type a message"
+                  aria-label="Type a message"
+                />
+                <div class="input-group-append">
+                  <button class="btn btn-primary" type="submit">Send</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.2.0/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+
+    <script>
+      // Initialize socket connection
+      var socket = io();
+      var userName = '';
+      var roomCode = '';
+
+      // Encrypt and Decrypt Functions
+      const SECRET_KEY = 'my_secret_key';
+      function encryptMessage(message) {
+        return CryptoJS.AES.encrypt(message, SECRET_KEY).toString();
+      }
+
+      function decryptMessage(encryptedMessage) {
+        const bytes = CryptoJS.AES.decrypt(encryptedMessage, SECRET_KEY);
+        return bytes.toString(CryptoJS.enc.Utf8);
+      }
+
+      // Show chat room UI
+      function showChatRoom() {
+        document.getElementById('room-form').style.display = 'none';
+        document.getElementById('chat-room').style.display = 'block';
+        document.getElementById('room-code-display').textContent = `Room Code: ${roomCode}`;
+      }
+
+      // Join room
+      document.getElementById('join-room').addEventListener('click', function () {
+        userName = document.getElementById('name').value.trim();
+        roomCode = document.getElementById('room_code').value.trim();
+
+        if (userName && roomCode) {
+          socket.emit('join_room', { userName: userName, roomCode: roomCode });
+          showChatRoom();
+        } else {
+          document.getElementById('error-message').textContent = 'Name and Room Code are required.';
+        }
+      });
+
+      // Create room
+      document.getElementById('create-room').addEventListener('click', function () {
+        userName = document.getElementById('name').value.trim();
+        roomCode = Math.random().toString(36).substring(2, 10);
+
+        if (userName) {
+          socket.emit('create_room', { userName: userName, roomCode: roomCode });
+          showChatRoom();
+        } else {
+          document.getElementById('error-message').textContent = 'Name is required to create a room.';
+        }
+      });
+
+      // Send message
+      document.getElementById("form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var message = document.getElementById("message_input").value.trim();
+
+        if (message) {
+          const encryptedMessage = encryptMessage(message);
+          socket.emit("message", {
+            message: encryptedMessage,
+            socket_id: socket.id,
+            userName: userName,
+            roomCode: roomCode,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+          document.getElementById("message_input").value = '';
+        }
+      });
+
+      // Receive message
+      socket.on("message", function (data) {
+        var item = document.createElement("li");
+        item.classList.add("message", data.socket_id === socket.id ? "sent" : "received");
+        item.innerHTML = `<b>${data.userName}</b>: <i>${decryptMessage(data.message)}</i><span class="timestamp">${data.time}</span>`;
+        document.getElementById("messages").appendChild(item);
+        document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+      });
+    </script>
+  </body>
+</html>
